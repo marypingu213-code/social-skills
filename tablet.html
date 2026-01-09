@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>拆彈控制器 (平板端)</title>
+    <style>
+        body {
+            background-color: #111;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            /* 防止手機雙擊放大 */
+            touch-action: manipulation; 
+        }
+
+        header {
+            color: #fff;
+            text-align: center;
+            padding: 15px;
+            font-family: sans-serif;
+            border-bottom: 2px solid #333;
+            flex: 0 0 auto; /* 固定高度 */
+        }
+        h1 { margin: 0; font-size: 1.5em; }
+        p { margin: 5px 0 0; color: #888; }
+
+        #controls-container {
+            flex: 1 1 auto; /* 佔滿剩餘空間 */
+            display: flex;
+            flex-direction: column; /* 垂直排列 */
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .control-btn {
+            flex: 1; /* 三個按鈕平分高度 */
+            border: none;
+            border-radius: 20px;
+            font-size: 5em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            cursor: pointer;
+            transition: all 0.1s;
+            /* 防止選取文字 */
+            user-select: none; -webkit-user-select: none;
+        }
+
+        /* 按鈕顏色與效果 */
+        #btn-a { background: linear-gradient(to bottom, #ff4444, #cc0000); box-shadow: 0 8px #990000; }
+        #btn-b { background: linear-gradient(to bottom, #44ff44, #00cc00); box-shadow: 0 8px #009900; }
+        #btn-c { background: linear-gradient(to bottom, #4444ff, #0000cc); box-shadow: 0 8px #000099; }
+
+        /* 按下時的效果 */
+        .control-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 2px #666;
+        }
+
+        /* 被鎖定(已發射)的狀態 */
+        .control-btn.locked {
+            background: #555 !important;
+            box-shadow: none !important;
+            color: #999;
+            transform: translateY(8px);
+            cursor: not-allowed;
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🕹️ 拆彈控制器 🕹️</h1>
+        <p>請看電視題目，與隊友討論後再按下！</p>
+    </header>
+
+    <div id="controls-container">
+        <button id="btn-a" class="control-btn" ontouchstart="handlePress('A')" onclick="handlePress('A')">A</button>
+        <button id="btn-b" class="control-btn" ontouchstart="handlePress('B')" onclick="handlePress('B')">B</button>
+        <button id="btn-c" class="control-btn" ontouchstart="handlePress('C')" onclick="handlePress('C')">C</button>
+    </div>
+
+    <script>
+        let isLocked = false;
+        const buttons = document.querySelectorAll('.control-btn');
+
+        function handlePress(option) {
+            if (isLocked) return;
+
+            // 鎖定所有按鈕，防止重複點擊
+            isLocked = true;
+            buttons.forEach(btn => btn.classList.add('locked'));
+
+            // 視覺回饋：顯示哪個被按下了 (這裡簡單用 alert 取代，實際使用時學生會看到按鈕變灰)
+            // 在真實課堂中，老師會看哪一組的平板先發出聲音或變色
+            console.log("已發射選項：" + option);
+
+            // 播放簡單提示音 (需要瀏覽器支援並允許)
+            try {
+                let context = new (window.AudioContext || window.webkitAudioContext)();
+                let oscillator = context.createOscillator();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, context.currentTime); // A5 音高
+                oscillator.connect(context.destination);
+                oscillator.start();
+                oscillator.stop(context.currentTime + 0.2); // 播放 0.2 秒
+            } catch (e) {
+                // 如果不支援音效也沒關係，視覺回饋已足夠
+            }
+
+            // 3秒後解鎖，準備下一題
+            setTimeout(() => {
+                buttons.forEach(btn => btn.classList.remove('locked'));
+                isLocked = false;
+            }, 3000);
+        }
+
+        // 防止雙擊縮放
+        document.addEventListener('dblclick', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+    </script>
+</body>
+</html>
