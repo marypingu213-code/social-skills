@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDKs (Compat version for stability) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
@@ -62,6 +62,15 @@
         .animate-bounce-slow {
             animation: bounce 2s infinite;
         }
+        
+        /* 完成任務的印章動畫 */
+        @keyframes stamp {
+            0% { opacity: 0; transform: scale(5); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .stamp-animation {
+            animation: stamp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
     </style>
 </head>
 <body>
@@ -72,7 +81,6 @@
 
         // =========================================================================
         // 【老師的 Firebase 設定】
-        // 已填入您提供的設定 (social-89bcb)
         // =========================================================================
         const TEACHER_FIREBASE_CONFIG = {
             apiKey: "AIzaSyDhwu9YAyfMxZtC5BhGKzmVyxWdQ4qW3MM",
@@ -103,7 +111,7 @@
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
                 auth = firebase.auth();
-                console.log("Firebase initialized successfully with project:", firebaseConfig.projectId);
+                console.log("Firebase initialized.");
             } catch(e) {
                 console.error("Firebase init error", e);
             }
@@ -149,6 +157,7 @@
 
                 const initAuth = async () => {
                     try {
+                        setLoadingError("");
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await auth.signInWithCustomToken(__initial_auth_token);
                         } else {
@@ -156,7 +165,11 @@
                         }
                     } catch (e) {
                         console.error("Auth error:", e);
-                        setLoadingError("登入失敗，請檢查網路連線");
+                        if (e.code === 'auth/operation-not-allowed') {
+                            setLoadingError("錯誤：請到 Firebase Console 開啟「匿名登入」");
+                        } else {
+                            setLoadingError(`連線錯誤 (${e.code})`);
+                        }
                     }
                 };
                 initAuth();
@@ -180,18 +193,17 @@
                     loadedStudents.sort((a, b) => a.order - b.order);
                     
                     if (loadedStudents.length === 0) {
-                        // 自動初始化
                         initializeStudents(studentsRef);
                     } else {
                         setStudents(loadedStudents);
-                        setLoadingError(""); // Clear error if success
+                        setLoadingError("");
                     }
                 }, (error) => {
                     console.error("Error fetching students:", error);
                     if (error.code === 'permission-denied') {
-                        setLoadingError("權限不足：請到 Firebase Console 將 Firestore 規則設為 Test Mode (測試模式)");
+                        setLoadingError("權限不足：請檢查 Firestore 規則是否為測試模式");
                     } else {
-                        setLoadingError("連線錯誤：" + error.message);
+                        setLoadingError("連線中斷：" + error.message);
                     }
                 });
 
@@ -216,10 +228,8 @@
                         });
                     });
                     await batch.commit();
-                    console.log("Initialized students data");
                 } catch (e) {
                     console.error("Init failed", e);
-                    setLoadingError("初始化失敗：" + e.message);
                 }
             };
 
@@ -261,23 +271,19 @@
                 if (selectedStudentId === null) {
                     return (
                         <div className="tablet-mode-container p-6">
-                            {isOfflineMode && <div className="text-center bg-red-100 p-2 text-red-600 text-sm font-bold mb-2 rounded-lg">⚠️ 單機演示模式</div>}
-                            {loadingError && <div className="text-center bg-red-100 p-4 text-red-600 font-bold mb-4 rounded-xl border-2 border-red-300">{loadingError}</div>}
-                            
+                            {loadingError && <div className="text-center bg-red-100 p-4 text-red-600 font-bold mb-4 rounded-xl border-2 border-red-300 whitespace-pre-line">{loadingError}</div>}
                             <h1 className="text-4xl font-black text-pink-800 text-center mb-2 mt-4">我是誰？</h1>
                             <p className="text-xl text-center text-gray-600 mb-8 font-bold">請點選你的名字</p>
-                            
                             {students.length === 0 && !loadingError && <div className="text-center text-gray-500 text-xl animate-pulse">載入名單中...</div>}
-
                             <div className="grid grid-cols-2 gap-6 max-w-4xl mx-auto">
                                 {students.map(student => (
                                     <button
                                         key={student.id}
                                         onClick={() => setSelectedStudentId(student.id)}
-                                        className="bg-white p-8 rounded-3xl shadow-lg border-b-8 border-pink-300 active:translate-y-2 active:border-b-0 transition-all"
+                                        className={`p-8 rounded-3xl shadow-lg border-b-8 active:translate-y-2 active:border-b-0 transition-all ${calculateScore(student.checks) === 3 ? 'bg-yellow-100 border-yellow-400' : 'bg-white border-pink-300'}`}
                                     >
                                         <div className="text-4xl font-bold text-gray-800">{student.name}</div>
-                                        {calculateScore(student.checks) === 3 && <div className="mt-2 text-2xl">🏆 完成！</div>}
+                                        {calculateScore(student.checks) === 3 && <div className="mt-2 text-2xl font-bold text-yellow-600">🏆 完成！</div>}
                                     </button>
                                 ))}
                             </div>
@@ -286,39 +292,23 @@
                 } else {
                     const currentStudent = students.find(s => s.id === selectedStudentId);
                     if (!currentStudent) return <div>載入中...</div>;
-
                     return (
                         <div className="tablet-mode-container p-6 flex flex-col items-center">
                             <div className="w-full max-w-2xl flex justify-between items-center mb-8 mt-4">
                                 <h2 className="text-4xl font-black text-pink-800">{currentStudent.name}的任務</h2>
                                 <button onClick={() => setSelectedStudentId(null)} className="bg-gray-200 text-gray-700 px-6 py-3 rounded-full font-bold text-xl shadow-md">返回</button>
                             </div>
-
                             <div className="flex-1 w-full max-w-2xl space-y-6">
-                                {[
-                                    { key: 'eyes', icon: '👀', text: '我有看紅綠燈' },
-                                    { key: 'hand', icon: '✋', text: '我想說話有舉手' },
-                                    { key: 'mouth', icon: '🤐', text: '別人說話我安靜' }
-                                ].map(item => (
-                                    <div 
-                                        key={item.key}
-                                        onClick={() => updateStudentCheck(currentStudent.id, item.key, currentStudent.checks[item.key])}
-                                        className={`flex items-center p-6 bg-white rounded-3xl shadow-lg cursor-pointer transition-all border-l-[16px] active:scale-95 ${currentStudent.checks[item.key] ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}
-                                    >
-                                        <div className={`w-20 h-20 rounded-2xl border-4 mr-6 flex items-center justify-center transition-colors flex-shrink-0 ${currentStudent.checks[item.key] ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
-                                            {currentStudent.checks[item.key] && <span className="text-5xl text-white font-bold">✓</span>}
-                                        </div>
-                                        <span className="text-6xl mr-6">{item.icon}</span>
-                                        <span className="text-4xl font-bold text-gray-700">{item.text}</span>
+                                {[{ key: 'eyes', icon: '👀', text: '我有看紅綠燈' }, { key: 'hand', icon: '✋', text: '我想說話有舉手' }, { key: 'mouth', icon: '🤐', text: '別人說話我安靜' }].map(item => (
+                                    <div key={item.key} onClick={() => updateStudentCheck(currentStudent.id, item.key, currentStudent.checks[item.key])} className={`flex items-center p-6 bg-white rounded-3xl shadow-lg cursor-pointer transition-all border-l-[16px] active:scale-95 ${currentStudent.checks[item.key] ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
+                                        <div className={`w-20 h-20 rounded-2xl border-4 mr-6 flex items-center justify-center transition-colors flex-shrink-0 ${currentStudent.checks[item.key] ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>{currentStudent.checks[item.key] && <span className="text-5xl text-white font-bold">✓</span>}</div>
+                                        <span className="text-6xl mr-6">{item.icon}</span><span className="text-4xl font-bold text-gray-700">{item.text}</span>
                                     </div>
                                 ))}
                             </div>
                             {calculateScore(currentStudent.checks) === 3 && (
-                                <div className="mt-8 mb-8 animate-bounce">
-                                    <div className="bg-yellow-100 border-4 border-yellow-400 text-yellow-800 px-10 py-6 rounded-3xl shadow-xl text-center">
-                                        <div className="text-6xl mb-2">🌟</div>
-                                        <div className="text-3xl font-black">太棒了！全部完成！</div>
-                                    </div>
+                                <div className="mt-8 mb-8 stamp-animation">
+                                    <div className="bg-yellow-100 border-4 border-yellow-400 text-yellow-800 px-10 py-6 rounded-3xl shadow-xl text-center"><div className="text-6xl mb-2">🌟</div><div className="text-3xl font-black">太棒了！全部完成！</div></div>
                                 </div>
                             )}
                         </div>
@@ -448,13 +438,23 @@
                                 )}
 
                                 <div className="flex-1 w-full grid grid-cols-4 gap-3 align-content-start pb-20">
-                                    {students.map(student => (
-                                        <div key={student.id} className={`p-2 rounded-xl shadow-sm border-b-4 transition-all flex flex-col items-center justify-center ${calculateScore(student.checks) === 3 ? 'bg-yellow-100 border-yellow-400 scale-105' : 'bg-white border-pink-200'}`}>
-                                            <div className="text-2xl mb-0.5">{calculateScore(student.checks) === 3 ? '🏆' : '🙂'}</div>
-                                            <h3 className="text-lg font-bold text-gray-800 mb-0.5">{student.name}</h3>
-                                            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-200 mt-0.5"><div className="bg-pink-500 h-2 rounded-full transition-all duration-500" style={{width: `${(calculateScore(student.checks)/3)*100}%`}}></div></div>
-                                        </div>
-                                    ))}
+                                    {students.map(student => {
+                                        const score = calculateScore(student.checks);
+                                        const isDone = score === 3;
+                                        return (
+                                            <div key={student.id} className={`p-3 rounded-2xl shadow-md border-b-4 transition-all flex flex-col items-center justify-center relative overflow-hidden ${isDone ? 'bg-yellow-100 border-yellow-400 scale-105' : 'bg-white border-pink-200'}`}>
+                                                <div className="text-3xl mb-1">{isDone ? '🏆' : '🙂'}</div>
+                                                <h3 className="text-xl font-bold text-gray-800 mb-1">{student.name}</h3>
+                                                <div className={`text-2xl font-black mb-1 ${isDone ? 'text-yellow-600' : 'text-pink-600'}`}>
+                                                    {score} / 3
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3 dark:bg-gray-200">
+                                                    <div className={`h-3 rounded-full transition-all duration-500 ${isDone ? 'bg-yellow-500' : 'bg-pink-500'}`} style={{width: `${(score/3)*100}%`}}></div>
+                                                </div>
+                                                {isDone && <div className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-bl-lg">完成!</div>}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {isLocalFile ? (
