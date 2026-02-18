@@ -68,16 +68,13 @@
         .animate-bounce-slow {
             animation: bounce 2s infinite;
         }
-        
-        /* 特效與動畫 */
         @keyframes stamp {
-            0% { opacity: 0; transform: scale(3) rotate(-10deg); }
-            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+            0% { opacity: 0; transform: scale(3); }
+            100% { opacity: 1; transform: scale(1); }
         }
         .stamp-animation {
             animation: stamp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
-        
         .flip-card { perspective: 1000px; }
         .flip-card-inner {
             position: relative;
@@ -107,7 +104,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useRef } = React;
 
         // =========================================================================
         // 【老師的 Firebase 設定】
@@ -134,6 +131,8 @@
         const firebaseConfig = getFirebaseConfig();
         let db = null;
         let auth = null;
+        // 使用固定的集合名稱 V2，避免與舊資料衝突
+        const COLLECTION_NAME = 'students_session_v2_safe_ids';
         const appId = firebaseConfig ? firebaseConfig.projectId : 'classroom-raccoon-001';
         
         if (firebaseConfig && firebase.apps.length === 0) {
@@ -147,11 +146,21 @@
             }
         }
 
-        const STUDENT_NAMES = ["瑀安", "承熙", "書愷", "岷翰", "睿穎", "宇軒", "楷元", "守恩"];
+        // 使用安全的 ID (s1, s2...) 對應中文名字，避免編碼問題
+        const STUDENT_DATA = [
+            { id: 's1', name: '瑀安' },
+            { id: 's2', name: '承熙' },
+            { id: 's3', name: '書愷' },
+            { id: 's4', name: '岷翰' },
+            { id: 's5', name: '睿穎' },
+            { id: 's6', name: '宇軒' },
+            { id: 's7', name: '楷元' },
+            { id: 's8', name: '守恩' }
+        ];
 
-        const MOCK_STUDENTS = STUDENT_NAMES.map((name, index) => ({
-            id: name,
-            name: name,
+        const MOCK_STUDENTS = STUDENT_DATA.map((s, index) => ({
+            id: s.id,
+            name: s.name,
             order: index,
             checks: { eyes: false, hand: false, mouth: false },
             submitted: false,
@@ -170,6 +179,7 @@
             const [loadingError, setLoadingError] = useState("");
             const [connectionStatus, setConnectionStatus] = useState("connecting");
             const [revealResults, setRevealResults] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false); // 平板送出轉圈圈
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
@@ -181,10 +191,11 @@
                 }
             }, []);
 
+            // Auth Logic
             useEffect(() => {
                 if (!db) {
                     setConnectionStatus("disconnected");
-                    const savedData = localStorage.getItem('local_students_data');
+                    const savedData = localStorage.getItem('local_students_data_v2');
                     if (savedData) setStudents(JSON.parse(savedData));
                     return;
                 }
@@ -194,17 +205,18 @@
                         setLoadingError("");
                         setConnectionStatus("connecting");
                         
-                        // FIX: 如果使用了 TEACHER_FIREBASE_CONFIG，直接使用匿名登入，忽略預覽環境的 Token
+                        // FIX: 如果設定了 TEACHER_FIREBASE_CONFIG，直接強制使用匿名登入
+                        // 避免使用預覽環境的 Token 導致 auth/custom-token-mismatch 錯誤
                         if (TEACHER_FIREBASE_CONFIG) {
-                            console.log("Using custom config, skipping preview token.");
+                            console.log("Using custom config, forcing anonymous login.");
                             await auth.signInAnonymously();
                         } 
-                        // 否則如果是預覽環境且有 Token，嘗試使用 Token
+                        // 只有在沒有自訂設定且有預覽 Token 時才使用 Token
                         else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             try {
                                 await auth.signInWithCustomToken(__initial_auth_token);
                             } catch (tokenError) {
-                                console.warn("Token login failed, falling back to anonymous:", tokenError);
+                                console.warn("Token failed, falling back to anonymous", tokenError);
                                 await auth.signInAnonymously();
                             }
                         } else {
@@ -231,15 +243,16 @@
                 return () => unsubscribe();
             }, []);
 
+            // Firestore Data Logic
             useEffect(() => {
                 if (!user || !db) return;
 
                 const studentsRef = db.collection('artifacts').doc(appId)
                                       .collection('public').doc('data')
-                                      .collection('students_session_v1');
+                                      .collection(COLLECTION_NAME);
                 
                 const unsubscribe = studentsRef.onSnapshot((snapshot) => {
-                    setConnectionStatus("connected"); // 收到資料代表連線正常
+                    setConnectionStatus("connected");
                     const loadedStudents = [];
                     snapshot.forEach(doc => {
                         loadedStudents.push({ id: doc.id, ...doc.data() });
@@ -250,12 +263,13 @@
                         setStudents(loadedStudents);
                         setLoadingError("");
                     } else {
+                        // 只在真正沒有資料時才初始化，避免覆蓋
                         initializeStudents(studentsRef);
                     }
                 }, (error) => {
                     console.error("Firestore Error:", error);
                     setConnectionStatus("disconnected");
-                    setLoadingError("資料庫斷線");
+                    setLoadingError("資料庫斷線: " + error.message);
                 });
 
                 return () => unsubscribe();
@@ -266,13 +280,13 @@
                 try {
                     const targetRef = collectionRef || db.collection('artifacts').doc(appId)
                                       .collection('public').doc('data')
-                                      .collection('students_session_v1');
+                                      .collection(COLLECTION_NAME);
                     
                     const batch = db.batch();
-                    STUDENT_NAMES.forEach((name, index) => {
-                        const docRef = targetRef.doc(name);
+                    STUDENT_DATA.forEach((s, index) => {
+                        const docRef = targetRef.doc(s.id);
                         batch.set(docRef, {
-                            name: name,
+                            name: s.name,
                             order: index,
                             checks: { eyes: false, hand: false, mouth: false },
                             submitted: false,
@@ -280,6 +294,7 @@
                         });
                     });
                     await batch.commit();
+                    console.log("Initialized V2 data");
                 } catch (e) {
                     console.error("Init failed", e);
                 }
@@ -298,7 +313,7 @@
                     const batch = db.batch();
                     const collectionRef = db.collection('artifacts').doc(appId)
                                           .collection('public').doc('data')
-                                          .collection('students_session_v1');
+                                          .collection(COLLECTION_NAME);
                     
                     students.forEach(student => {
                         const docRef = collectionRef.doc(student.id);
@@ -310,17 +325,12 @@
                     await batch.commit();
                 } catch (e) {
                     console.error("Reset failed", e);
+                    alert("重置失敗: " + e.message);
                 }
             };
 
             const updateStudentCheck = async (studentId, checkItem, currentValue) => {
-                // 只有連線正常才允許操作，避免資料不同步
-                if (!db || !user || connectionStatus !== "connected") {
-                    alert("尚未連線，請檢查網路！");
-                    return; 
-                }
-
-                // 樂觀更新：先改本地畫面
+                // 平板端操作：先更新本地，再傳雲端
                 const nextValue = !currentValue;
                 setStudents(prev => prev.map(s => {
                     if (s.id === studentId) {
@@ -329,40 +339,51 @@
                     return s;
                 }));
 
-                // 送出到資料庫
-                try {
-                    const studentRef = db.collection('artifacts').doc(appId)
-                                         .collection('public').doc('data')
-                                         .collection('students_session_v1')
-                                         .doc(studentId);
-                    await studentRef.update({ [`checks.${checkItem}`]: nextValue });
-                } catch (e) { 
-                    console.error("Sync failed", e);
-                    alert("資料同步失敗，請重試");
+                if (db && user) {
+                    try {
+                        const studentRef = db.collection('artifacts').doc(appId)
+                                             .collection('public').doc('data')
+                                             .collection(COLLECTION_NAME)
+                                             .doc(studentId);
+                        // 不使用 await，讓它在背景執行，不卡介面
+                        studentRef.update({ [`checks.${checkItem}`]: nextValue });
+                    } catch (e) { console.error("Sync failed", e); }
+                } else {
+                    saveToLocal();
                 }
             };
 
             const submitStudentData = async (studentId, status) => {
                 if (!db || !user || connectionStatus !== "connected") {
-                    alert("尚未連線，無法送出！");
+                    alert("尚未連線到雲端，無法送出到電視！請檢查右上角燈號。");
                     return;
                 }
 
-                setStudents(prev => prev.map(s => {
-                    if (s.id === studentId) return { ...s, submitted: status };
-                    return s;
-                }));
+                setIsSubmitting(true);
 
                 try {
                     const studentRef = db.collection('artifacts').doc(appId)
                                          .collection('public').doc('data')
-                                         .collection('students_session_v1')
+                                         .collection(COLLECTION_NAME)
                                          .doc(studentId);
+                    // 這裡必須使用 await 確保雲端收到
                     await studentRef.update({ submitted: status });
+                    
+                    // 成功後更新本地狀態
+                    setStudents(prev => prev.map(s => {
+                        if (s.id === studentId) return { ...s, submitted: status };
+                        return s;
+                    }));
                 } catch (e) {
                     console.error("Sync failed", e);
-                    alert("送出失敗，請重試");
+                    alert("送出失敗：" + e.message);
+                } finally {
+                    setIsSubmitting(false);
                 }
+            };
+
+            const saveToLocal = () => {
+                localStorage.setItem('local_students_data_v2', JSON.stringify(students));
             };
 
             const calculateScore = (checks) => Object.values(checks || {}).filter(Boolean).length;
@@ -385,14 +406,13 @@
             const ConnectionStatus = () => {
                 let color = "bg-gray-400";
                 let text = "連線中...";
-                if (connectionStatus === "connected") { color = "bg-green-500"; text = "連線正常"; }
-                else if (connectionStatus === "disconnected") { color = "bg-red-500"; text = "斷線"; }
-                else if (connectionStatus === "connecting") { color = "bg-yellow-500"; text = "連線中..."; }
+                if (connectionStatus === "connected") { color = "bg-green-500"; text = "● 連線正常"; }
+                else if (connectionStatus === "disconnected") { color = "bg-red-500"; text = "● 斷線"; }
+                else if (connectionStatus === "connecting") { color = "bg-yellow-500"; text = "● 連線中..."; }
 
                 return (
-                    <div className="absolute top-6 left-6 flex items-center gap-3 z-50 bg-white/90 px-4 py-2 rounded-full shadow-md border-2 border-gray-100">
-                        <div className={`w-4 h-4 rounded-full ${color} ${connectionStatus === 'connecting' ? 'animate-pulse' : ''}`}></div>
-                        <span className="text-lg font-bold text-gray-700">{text}</span>
+                    <div className="absolute top-4 right-4 flex items-center gap-3 z-50 bg-white/90 px-4 py-2 rounded-full shadow-md border-2 border-gray-100">
+                        <span className={`text-lg font-bold ${color === 'bg-green-500' ? 'text-green-600' : 'text-red-500'}`}>{text}</span>
                     </div>
                 );
             };
@@ -402,7 +422,7 @@
                 if (selectedStudentId === null) {
                     return (
                         <div className="tablet-mode-container p-8">
-                            <div className="absolute top-4 right-4"><ConnectionStatus /></div>
+                            <ConnectionStatus />
                             {loadingError && <div className="mt-12 text-center bg-red-100 p-4 text-red-600 font-bold rounded-xl border-2 border-red-300">{loadingError}</div>}
                             
                             <h1 className="text-6xl font-black text-pink-800 text-center mb-10 mt-12">我是誰？</h1>
@@ -445,8 +465,9 @@
                                         <button 
                                             onClick={() => submitStudentData(currentStudent.id, false)}
                                             className="bg-gray-500 text-white px-12 py-6 rounded-full font-bold text-4xl shadow-lg hover:bg-gray-600"
+                                            disabled={isSubmitting}
                                         >
-                                            修改答案
+                                            {isSubmitting ? '處理中...' : '修改答案'}
                                         </button>
                                     </div>
                                 )}
@@ -463,9 +484,10 @@
                                 <div className="mt-12 mb-12 w-full max-w-4xl">
                                     <button 
                                         onClick={() => submitStudentData(currentStudent.id, true)}
-                                        className="w-full bg-pink-500 hover:bg-pink-600 text-white text-6xl font-black py-10 rounded-[3rem] shadow-2xl border-b-[16px] border-pink-700 active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center gap-6"
+                                        disabled={isSubmitting}
+                                        className={`w-full text-white text-6xl font-black py-10 rounded-[3rem] shadow-2xl border-b-[16px] active:translate-y-2 active:border-b-0 transition-all flex items-center justify-center gap-6 ${isSubmitting ? 'bg-gray-400 border-gray-600 cursor-wait' : 'bg-pink-500 hover:bg-pink-600 border-pink-700'}`}
                                     >
-                                        <span>🚀</span> 確認送出
+                                        {isSubmitting ? '傳送中...' : <span>🚀 確認送出</span>}
                                     </button>
                                 </div>
                             )}
@@ -545,7 +567,7 @@
                     );
                     case 5: return (
                         <div className="content-area bg-white px-8">
-                            <h2 className="text-7xl font-bold text-center text-purple-800 mb-16">幫幫小兔子！</h2>
+                            <h2 className="text-6xl font-bold text-center text-purple-800 mb-16">幫幫小兔子！</h2>
                             <div className="flex-1 flex items-center justify-center space-x-32 w-full">
                                 <div className="relative group">
                                     <span className="text-[14rem] block transform group-hover:-translate-y-4 transition-transform duration-300">🐰</span>
@@ -582,7 +604,16 @@
                         const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.href + '?mode=student')}`;
                         return (
                             <div className="content-area bg-pink-50 relative px-8 py-4">
-                                <ConnectionStatus />
+                                <div className="absolute top-4 left-4 flex gap-4">
+                                    <ConnectionStatus />
+                                    {/* 手動同步按鈕 */}
+                                    <button 
+                                        onClick={() => window.location.reload()} 
+                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg font-bold text-lg flex items-center gap-2"
+                                    >
+                                        <span>🔄</span> 重新整理
+                                    </button>
+                                </div>
                                 
                                 <div className="flex justify-center items-center mb-8 relative w-full">
                                     <h2 className="text-6xl font-bold text-pink-800 text-center">全班挑戰賽</h2>
@@ -631,7 +662,7 @@
                                                             <>
                                                                 <div className="text-8xl mb-4 text-green-500">✅</div>
                                                                 <h3 className="text-4xl font-bold text-gray-800 mb-2">{student.name}</h3>
-                                                                <div className="text-3xl font-bold text-green-700">已完成！</div>
+                                                                <div className="text-3xl font-bold text-green-700">已送出！</div>
                                                             </>
                                                         )}
                                                     </div>
