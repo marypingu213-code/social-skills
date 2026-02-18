@@ -442,7 +442,7 @@
             // 繪本閱讀器
             const BookReader = () => {
                 if (!showBook) return null;
-                const imagePath = `./image/room${String(bookPage).padStart(2, '0')}.jpg`;
+                const imagePath = `/image/room${String(bookPage).padStart(2, '0')}.jpg`;
 
                 return (
                     <div className="book-reader-overlay">
@@ -497,7 +497,7 @@
                             <ConnectionStatus />
                             {loadingError && <div className="mt-8 text-center bg-red-100 p-2 text-red-600 font-bold rounded-xl border-2 border-red-300">{loadingError}</div>}
                             
-                            <h1 className="text-4xl font-black text-pink-800 text-center mb-6 mt-4">我是誰？</h1>
+                            <h1 className="text-4xl font-black text-pink-800 text-center mb-6 mt-4">你是誰？</h1>
                             
                             <div className="grid grid-cols-2 gap-4 max-w-4xl mx-auto">
                                 {students.map(student => (
@@ -574,7 +574,7 @@
                         <div className="content-area bg-blue-50">
                             <div className="text-8xl animate-bounce-slow mb-4">🦝</div>
                             <h1 className="text-6xl font-black text-blue-800 tracking-wider mb-4">社會技巧課</h1>
-                            <div className="bg-white px-8 py-3 rounded-2xl border-4 border-blue-300 shadow-xl mb-4"><h2 className="text-3xl font-bold text-gray-700">浣熊的房間與說話規則</h2></div>
+                            <div className="bg-white px-8 py-3 rounded-2xl border-4 border-blue-300 shadow-xl mb-4"><h2 className="text-3xl font-bold text-gray-700">浣熊的房間(說話規則)</h2></div>
                             <p className="text-xl text-gray-500 font-bold">準備好你的耳朵和眼睛了嗎？</p>
                         </div>
                     );
@@ -790,7 +790,7 @@
                         <div className="content-area bg-yellow-100">
                             <div className="text-[8rem] animate-pulse drop-shadow-2xl">🌟</div>
                             <h2 className="text-6xl font-black text-yellow-600 tracking-wider mb-8">任務成功！</h2>
-                            <p className="text-3xl font-bold text-gray-700 bg-white/60 px-10 py-4 rounded-full mb-8">你可以去領獎勵貼紙囉！</p>
+                            <p className="text-3xl font-bold text-gray-700 bg-white/60 px-10 py-4 rounded-full mb-8">你可以去蓋印章囉！</p>
                             <div className="flex gap-8 mt-4">
                                 <span className="text-7xl animate-bounce" style={{animationDelay: '0s'}}>🦝</span>
                                 <span className="text-7xl animate-bounce" style={{animationDelay: '0.2s'}}>🐰</span>
