@@ -70,15 +70,6 @@
         .stamp-animation {
             animation: stamp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
-        
-        /* 翻牌特效 */
-        .flip-card-inner {
-            transition: transform 0.6s;
-            transform-style: preserve-3d;
-        }
-        .flip-card-front, .flip-card-back {
-            backface-visibility: hidden;
-        }
     </style>
 </head>
 <body>
@@ -127,8 +118,9 @@
 
         const STUDENT_NAMES = ["瑀安", "承熙", "書愷", "岷翰", "睿穎", "宇軒", "楷元", "守恩"];
 
+        // 預設資料：讓畫面可以秒開，不用等連線
         const MOCK_STUDENTS = STUDENT_NAMES.map((name, index) => ({
-            id: `student-${index}`,
+            id: name, // 直接用名字當ID，方便快速生成
             name: name,
             order: index,
             checks: { eyes: false, hand: false, mouth: false },
@@ -140,7 +132,8 @@
             const [currentSlide, setCurrentSlide] = useState(0);
             const [lightStatus, setLightStatus] = useState('red');
             const [user, setUser] = useState(null);
-            const [students, setStudents] = useState([]);
+            // 🚀 優化：直接使用預設名單初始化，解決平板載入慢的問題
+            const [students, setStudents] = useState(MOCK_STUDENTS);
             const [isTabletMode, setIsTabletMode] = useState(false);
             const [selectedStudentId, setSelectedStudentId] = useState(null);
             const [isOfflineMode, setIsOfflineMode] = useState(!db); 
@@ -156,34 +149,37 @@
                 }
             }, []);
 
-            useEffect(() => {
+            const connectToFirebase = async () => {
                 if (!db) {
                     const savedData = localStorage.getItem('local_students_data');
                     if (savedData) setStudents(JSON.parse(savedData));
-                    else setStudents(MOCK_STUDENTS);
                     return;
                 }
 
-                const initAuth = async () => {
-                    try {
-                        setLoadingError("");
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await auth.signInWithCustomToken(__initial_auth_token);
-                        } else {
-                            await auth.signInAnonymously();
-                        }
-                    } catch (e) {
-                        console.error("Auth error:", e);
-                        if (e.code === 'auth/operation-not-allowed') {
-                            setLoadingError("錯誤：請到 Firebase Console 開啟「匿名登入」");
-                        } else {
-                            setLoadingError(`連線錯誤 (${e.code})`);
-                        }
+                try {
+                    setLoadingError("連線中...");
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await auth.signInWithCustomToken(__initial_auth_token);
+                    } else {
+                        await auth.signInAnonymously();
                     }
-                };
-                initAuth();
-                const unsubscribe = auth.onAuthStateChanged(setUser);
-                return () => unsubscribe();
+                    setLoadingError(""); // 連線成功
+                } catch (e) {
+                    console.error("Auth error:", e);
+                    if (e.code === 'auth/operation-not-allowed') {
+                        setLoadingError("請去 Firebase 開啟「匿名登入」");
+                    } else {
+                        setLoadingError(`連線失敗: ${e.code}`);
+                    }
+                }
+            };
+
+            useEffect(() => {
+                connectToFirebase();
+                if (auth) {
+                    const unsubscribe = auth.onAuthStateChanged(setUser);
+                    return () => unsubscribe();
+                }
             }, []);
 
             useEffect(() => {
@@ -199,21 +195,17 @@
                         loadedStudents.push({ id: doc.id, ...doc.data() });
                     });
 
-                    loadedStudents.sort((a, b) => a.order - b.order);
-                    
-                    if (loadedStudents.length === 0) {
-                        initializeStudents(studentsRef);
-                    } else {
+                    // 如果資料庫有資料，就用資料庫的；沒有的話就用預設的並初始化
+                    if (loadedStudents.length > 0) {
+                        loadedStudents.sort((a, b) => a.order - b.order);
                         setStudents(loadedStudents);
                         setLoadingError("");
+                    } else {
+                        initializeStudents(studentsRef);
                     }
                 }, (error) => {
-                    console.error("Error fetching students:", error);
-                    if (error.code === 'permission-denied') {
-                        setLoadingError("權限不足：請檢查 Firestore 規則是否為測試模式");
-                    } else {
-                        setLoadingError("連線中斷：" + error.message);
-                    }
+                    console.error("Firestore Error:", error);
+                    setLoadingError("資料庫斷線");
                 });
 
                 return () => unsubscribe();
@@ -228,6 +220,7 @@
                     
                     const batch = db.batch();
                     STUDENT_NAMES.forEach((name, index) => {
+                        // 使用名字當作 Document ID，避免重複
                         const docRef = targetRef.doc(name);
                         batch.set(docRef, {
                             name: name,
@@ -253,7 +246,6 @@
                                           .collection('public').doc('data')
                                           .collection('students_session_v1');
                     
-                    // 這裡需要先讀取所有文件再重置，或直接用 students state
                     students.forEach(student => {
                         const docRef = collectionRef.doc(student.id);
                         batch.update(docRef, {
@@ -275,7 +267,6 @@
                                          .doc(studentId);
                     await studentRef.update({ [`checks.${checkItem}`]: !currentValue });
                 } else {
-                    // Offline logic
                     const newStudents = students.map(s => {
                         if (s.id === studentId) return { ...s, checks: { ...s.checks, [checkItem]: !currentValue } };
                         return s;
@@ -323,10 +314,8 @@
                 if (selectedStudentId === null) {
                     return (
                         <div className="tablet-mode-container p-6">
-                            {loadingError && <div className="text-center bg-red-100 p-4 text-red-600 font-bold mb-4 rounded-xl border-2 border-red-300 whitespace-pre-line">{loadingError}</div>}
                             <h1 className="text-4xl font-black text-pink-800 text-center mb-2 mt-4">我是誰？</h1>
                             <p className="text-xl text-center text-gray-600 mb-8 font-bold">請點選你的名字</p>
-                            {students.length === 0 && !loadingError && <div className="text-center text-gray-500 text-xl animate-pulse">載入名單中...</div>}
                             <div className="grid grid-cols-2 gap-6 max-w-4xl mx-auto">
                                 {students.map(student => (
                                     <button
@@ -343,7 +332,7 @@
                     );
                 } else {
                     const currentStudent = students.find(s => s.id === selectedStudentId);
-                    if (!currentStudent) return <div>載入中...</div>;
+                    if (!currentStudent) return <div>載入中...</div>; // Should rarely happen now due to MOCK init
                     const isSubmitted = currentStudent.submitted;
 
                     return (
@@ -500,7 +489,12 @@
                             <div className="content-scroll-area flex flex-col h-full px-6 py-2 bg-pink-50 relative">
                                 <h2 className="text-3xl font-bold text-pink-800 mb-2 mt-2 text-center">全班挑戰賽</h2>
                                 {isOfflineMode && <div className="absolute top-2 left-2 text-red-500 text-sm font-bold bg-white p-1 rounded shadow-md border border-red-200 z-50">⚠️ 未設定 Firebase</div>}
-                                {loadingError && <div className="absolute top-12 left-2 text-red-600 font-bold bg-white p-2 rounded border-2 border-red-300 z-50 shadow-lg text-sm whitespace-pre-wrap max-w-xs">{loadingError}</div>}
+                                {loadingError && (
+                                    <div className="absolute top-12 left-2 flex gap-2 z-50">
+                                        <div className="text-red-600 font-bold bg-white p-2 rounded border-2 border-red-300 shadow-lg text-sm whitespace-pre-wrap max-w-xs">{loadingError}</div>
+                                        <button onClick={connectToFirebase} className="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600">重連</button>
+                                    </div>
+                                )}
                                 
                                 <button onClick={resetAllStudents} className="absolute top-2 right-2 bg-gray-200 text-gray-600 hover:bg-red-100 hover:text-red-500 px-3 py-1 rounded text-sm z-50">重置</button>
 
