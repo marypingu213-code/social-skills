@@ -21,36 +21,46 @@
             background: white;
             border-radius: 20px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 90%;
         }
-        h1 { color: #2c3e50; }
+        h1 { color: #2c3e50; margin-bottom: 20px; }
         .welcome-img {
-            max-width: 300px;
+            max-width: 100%;
+            height: auto;
+            width: 300px;
             border-radius: 15px;
             margin-bottom: 20px;
+            border: 3px solid #eee;
         }
         .start-btn {
             display: inline-block;
-            padding: 15px 30px;
-            font-size: 1.2rem;
+            padding: 15px 40px;
+            font-size: 1.3rem;
             color: white;
             background-color: #ff7f50;
             text-decoration: none;
             border-radius: 50px;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            font-weight: bold;
         }
         .start-btn:hover {
-            transform: scale(1.05);
+            transform: scale(1.1);
             background-color: #ff6347;
+            box-shadow: 0 5px 15px rgba(255, 127, 80, 0.4);
         }
+        p { color: #7f8c8d; font-size: 1.1rem; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>叮咚！社會技巧課上課囉！</h1>
-        <img src="浣熊的房間.png" alt="浣熊的房間" class="welcome-img">
+        
+        <img src="room.png" alt="浣熊的房間" class="welcome-img">
+        
         <p>準備好要進入「浣熊的房間」學習了嗎？</p>
-        <a href="社會技巧1-4節.html" class="start-btn">點我開始上課</a>
+        
+        <a href="room1-4.html" class="start-btn">點我開始上課</a>
     </div>
 
 </body>
