@@ -183,6 +183,36 @@
             completed: false
         }));
 
+        // --- 智慧圖片讀取器 (解決大小寫與副檔名問題) ---
+        const SmartImage = ({ baseName, className, fallback }) => {
+            const [extIndex, setExtIndex] = useState(0);
+            const [failed, setFailed] = useState(false);
+            // 自動嘗試各種可能的副檔名
+            const exts = ['.jpg', '.JPG', '.png', '.PNG', '.jpeg', '.JPEG'];
+            
+            useEffect(() => {
+                setExtIndex(0);
+                setFailed(false);
+            }, [baseName]);
+
+            if (failed) return fallback;
+
+            return (
+                <img 
+                    src={`image/${baseName}${exts[extIndex]}`}
+                    className={className}
+                    alt={baseName}
+                    onError={() => {
+                        if (extIndex < exts.length - 1) {
+                            setExtIndex(prev => prev + 1);
+                        } else {
+                            setFailed(true);
+                        }
+                    }}
+                />
+            );
+        };
+
         // --- 時鐘組件 ---
         const Clock = () => {
             const [time, setTime] = useState(new Date());
@@ -216,7 +246,7 @@
             // 繪本閱讀器狀態
             const [showBook, setShowBook] = useState(false);
             const [bookPage, setBookPage] = useState(1);
-            const TOTAL_PAGES = 20; // 繪本總頁數更新為 20
+            const TOTAL_PAGES = 20; 
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
@@ -427,8 +457,7 @@
             // 繪本閱讀器
             const BookReader = () => {
                 if (!showBook) return null;
-                // 新的圖片路徑格式： 1-1(1).jpg ~ 1-1(20).jpg
-                const imagePath = `./image/1-1(${bookPage}).jpg`;
+                const baseName = `1-1(${bookPage})`;
 
                 return (
                     <div className="book-reader-overlay">
@@ -449,14 +478,14 @@
                             </button>
                             
                             <div className="relative flex flex-col items-center">
-                                <img 
-                                    src={imagePath} 
-                                    alt={`Page ${bookPage}`} 
+                                <SmartImage 
+                                    baseName={baseName}
                                     className="book-image"
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        e.target.parentNode.innerHTML = `<div class="text-white text-xl p-10 border border-white text-center">圖片讀取失敗<br/>請確認檔案位置: ${imagePath}<br/>(GitHub 需注意大小寫)</div>`;
-                                    }}
+                                    fallback={
+                                        <div className="text-white text-xl p-10 border border-white text-center bg-black/50 rounded-lg">
+                                            圖片讀取失敗<br/>請確認檔案位置: image/{baseName}.jpg<br/>
+                                        </div>
+                                    }
                                 />
                                 <div className="text-white text-xl font-bold mt-2 bg-black/50 px-4 py-1 rounded-full">
                                     {bookPage} / {TOTAL_PAGES}
@@ -599,8 +628,15 @@
                                     title="點擊閱讀繪本"
                                 >
                                     <div className="relative">
-                                        <img src="./image/1-1(1).jpg" alt="浣熊的房間" className="w-[18rem] h-[24rem] object-cover rounded-2xl mb-2 shadow-inner bg-gray-100" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
-                                        <div className="w-[18rem] h-[24rem] bg-gray-200 hidden flex-col items-center justify-center rounded-2xl mb-2 text-gray-400 text-center p-4"><div className="text-center"><div className="text-5xl mb-2">📚</div><div className="text-lg font-bold">圖片讀取失敗<br/>1-1(1).jpg</div></div></div>
+                                        <SmartImage 
+                                            baseName="1-1(1)"
+                                            className="w-[18rem] h-[24rem] object-cover rounded-2xl mb-2 shadow-inner bg-gray-100"
+                                            fallback={
+                                                <div className="w-[18rem] h-[24rem] bg-gray-200 flex flex-col items-center justify-center rounded-2xl mb-2 text-gray-400 text-center p-4">
+                                                    <div className="text-center"><div className="text-5xl mb-2">📚</div><div className="text-lg font-bold">圖片讀取失敗<br/>1-1(1)</div></div>
+                                                </div>
+                                            }
+                                        />
                                         
                                         <div className="absolute bottom-2 right-2 bg-yellow-400 text-white rounded-full p-2 shadow-lg animate-bounce">
                                             <span className="text-2xl">👆</span>
@@ -618,7 +654,7 @@
                     );
                     case 4: return (
                         <div className="content-area bg-orange-50">
-                            <h2 className="text-6xl font-bold text-orange-800 mb-6 text-center">我好想說話，怎麼辦？</h2>
+                            <h2 className="text-6xl font-bold text-orange-800 mb-8 text-center">我好想說話，怎麼辦？</h2>
                             <div className="flex-1 flex flex-col justify-center items-center gap-10 w-full">
                                 <div className="bg-white px-16 py-8 rounded-[3rem] shadow-xl border-8 border-orange-300 flex flex-col items-center cursor-pointer hover:scale-105 transition-transform">
                                     <span className="text-[6rem] mb-2 leading-none">✋</span><h3 className="text-5xl font-black text-orange-600">等待卡</h3>
